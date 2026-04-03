@@ -9,6 +9,7 @@ from database import init_db, get_all_pages, insert_page, log_search
 from ranking import get_engine, rebuild_index
 from crawler import crawl_url
 import time
+from gpt_client import summarize_text
 
 # アプリ起動時に DB を初期化する（テーブルが未作成なら作る）
 init_db()
@@ -98,6 +99,14 @@ with tab_search:
                     with col4: st.caption(f"📅 {(page.get('crawled_at', '') or '')[:10]}")
 
                     st.markdown(f"🔗 [{page['url']}]({page['url']})")
+
+                    if st.button(f"このページを要約する", key=f"{page['id']}"):
+                        with st.spinner("要約中..."):
+                            text = f"{page.get('title', '')}\n\n{page.get('full_text', '')}"
+                            summary = summarize_text(text)
+                        st.success("要約結果")
+                        st.write(summary)
+                        
                     st.divider()
         else:
             st.info("該当するページが見つかりませんでした")
@@ -195,6 +204,13 @@ with tab_list:
                 with col1: st.caption(f"語数：{page.get('word_count', 0)}")
                 with col2: st.caption(f"作成者：{page.get('author', '不明') or '不明'}")
                 with col3: st.caption(f"カテゴリ：{page.get('category', '未分類') or '未分類'}")
+
+                if st.button(f"このページを要約する", key=f"{page['id']}"):
+                    with st.spinner("要約中..."):
+                        text = f"{page.get('title', '')}\n\n{page.get('full_text', '')}"
+                        summary = summarize_text(text)
+                        st.success("要約結果")
+                        st.write(summary)
 
 st.divider()
 st.caption("© 2025 PROJECT ZERO — Tech0 Search v1.0 | Powered by TF-IDF")
