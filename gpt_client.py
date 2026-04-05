@@ -4,6 +4,7 @@ gpt_client.py
 OpenAI API を使ってテキスト要約を行うためのユーティリティモジュール。
 
 ・.env から OPENAI_API_KEY を読み込む
+・デプロイ環境では.streamlit/secrets.toml からAPIキーを取得する
 ・summarize_text() で任意テキストを指定文字数以内で要約
 ・例外処理つきで安全に API を呼び出す
 """
@@ -11,7 +12,7 @@ OpenAI API を使ってテキスト要約を行うためのユーティリティ
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
-
+import streamlit as st
 
 # ==============================
 #  初期化
@@ -21,9 +22,12 @@ import os
 load_dotenv()
 
 # API キー取得
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = st.secrets["openai"]["api_key"]
+
 if not api_key:
-    raise ValueError("環境変数 OPENAI_API_KEY が設定されていません。")
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("環境変数 OPENAI_API_KEY が設定されていません。")
 
 
 # OpenAI クライアント初期化
