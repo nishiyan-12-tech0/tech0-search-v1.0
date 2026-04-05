@@ -42,18 +42,11 @@ with st.sidebar:
     st.header("DB の状態")
     st.metric("登録ページ数", f"{len(pages)} 件")
     if st.button("🔄 インデックスを更新"):
-         with st.spinner("インデックスを再構築中..."):
-            # 1. 最新の全ページを取得してインデックスを再作成
+        with st.spinner("インデックスを再構築中..."):
             new_pages = get_all_pages()
             rebuild_index(new_pages)
-            
-            # 2. Streamlitのキャッシュをクリアして最新状態を反映させる
             st.cache_resource.clear()
-            
-            # 3. 完了メッセージを表示
             st.success("✅ インデックスの更新が完了しました！")
-        
-            # 4. 画面をリロードして最新の engine を取得し直す
             time.sleep(1)
             st.rerun()
 
@@ -66,18 +59,65 @@ tab_search, tab_chat, tab_crawl, tab_list = st.tabs(
 with tab_search:
     st.subheader("キーワードで検索")
 
-    col_search, col_options = st.columns([3, 1])
-    with col_search:
-        query = st.text_input("🔍 キーワードを入力", placeholder="例: DX, IoT, 製造業",
-                              label_visibility="collapsed")
-    with col_options:
+    # ── 1行目：検索バー ────────────────────────────────────────
+    query = st.text_input(
+        "🔍 キーワードを入力",
+        placeholder="例: DX, IoT, 製造業",
+        label_visibility="collapsed"
+    )
+
+    # ── 2行目：検索条件 + 検索ボタン ───────────────────────────
+    col_n, col_date, col_sort, col_btn = st.columns([1, 1, 1, 1])
+
+    with col_n:
         top_n = st.selectbox("表示件数", [10, 20, 50], index=0)
 
-    if query:
-        results = engine.search(query, top_n=top_n)
-        log_search(query, len(results))    # 検索するたびに自動記録（Step7で実装予定）
+    with col_date:
+        date_label = st.selectbox("期間", [
+            "制限なし",
+            "1年以内",
+            "3年以内",
+            "5年以内",
+        ])
 
-        st.markdown(f"**📊 検索結果：{len(results)} 件**（TF-IDFスコア順）")
+    with col_sort:
+        sort_label = st.selectbox("並び順", [
+            "関連度順",
+            "新しい順",
+            "古い順",
+        ])
+
+    with col_btn:
+        st.write("")  # ラベル分の余白を合わせる
+        search_btn = st.button("🔍 検索", type="primary", use_container_width=True)
+
+    # ── 選択肢を ranking.py が受け取れる値に変換する ──────────
+    date_map = {
+        "制限なし": None,
+        "1年以内": 1,
+        "3年以内": 3,
+        "5年以内": 5,
+    }
+    sort_map = {
+        "関連度順": "relevance",
+        "新しい順": "newest",
+        "古い順":   "oldest",
+    }
+
+    date_filter = date_map[date_label]
+    sort_order  = sort_map[sort_label]
+
+    # ── 検索実行（検索ボタンを押したとき） ────────────────────
+    if search_btn and query:
+        results = engine.search(
+            query,
+            top_n=top_n,
+            date_filter=date_filter,
+            sort_order=sort_order,
+        )
+        log_search(query, len(results))
+
+        st.markdown(f"**📊 検索結果：{len(results)} 件**（{sort_label} / {date_label}）")
         st.divider()
 
         if results:
@@ -85,13 +125,11 @@ with tab_search:
                 with st.container():
                     col_rank, col_title, col_score = st.columns([0.5, 4, 1])
                     with col_rank:
-                        # 上位3件にはメダルを表示する
                         medal = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else str(i)
                         st.markdown(f"### {medal}")
                     with col_title:
                         st.markdown(f"### {page['title']}")
                     with col_score:
-                        # relevance_score（最終スコア）と base_score（TF-IDFのみ）を両方表示
                         st.metric("スコア", f"{page['relevance_score']}",
                                   delta=f"基準: {page['base_score']}")
 
@@ -119,51 +157,44 @@ with tab_search:
                             summary = summarize_text(text)
                         st.success("要約結果")
                         st.write(summary)
-                        
+
                     st.divider()
         else:
             st.info("該当するページが見つかりませんでした")
 
+    elif search_btn and not query:
+        st.warning("キーワードを入力してください")
+
 # ── チャットタブ ─────────────────────────────────────────────
 with tab_chat:
     st.subheader("💭 AI アシスタント")
-    
-    # 1. 【最優先】まず「messages」がセッション内にあるか確認し、なければ作る
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # 2. 履歴クリアボタン
     if st.button("🗑️ 履歴をクリア", key="clear_chat"):
         st.session_state.messages = []
         st.rerun()
 
-    # 3. 履歴の表示（ここで st.session_state.messages を使う）
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # 4. 入力欄（これが自動で最下部に固定される）
     if prompt := st.chat_input("質問を入力してください（例: 製造業のDX事例は？）"):
-        # ユーザー入力を表示＆保存
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # AIの回答生成ロジック
         with st.chat_message("assistant"):
             with st.spinner("ナレッジベースを検索中..."):
-                from chat import get_ai_response # chat.pyからインポート
                 answer, refs = get_ai_response(prompt, engine)
-                
                 full_response = answer
                 if refs:
                     full_response += "\n\n---\n**📚 参照元:**\n"
                     for ref in refs:
                         full_response += f"- [{ref['title']}]({ref['url']})\n"
-                
                 st.markdown(full_response)
-        
-        # 回答を履歴に保存して再描画
+
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
 
@@ -192,11 +223,8 @@ with tab_crawl:
                 urls_count = len(urls)
                 url_count = 0
                 st.write(f"🔗 {urls_count}件のURLを処理します")
-                msg = f"🔗 {url_count}/{urls_count}件のURLを処理中"
-
                 st.session_state.crawl_results = []
-                progress_bar = st.progress(0, text = msg)
-                
+                progress_bar = st.progress(0, text=f"🔗 0/{urls_count}件のURLを処理中")
 
                 for url in urls:
                     with st.spinner(f"クロール中: {url}"):
@@ -204,28 +232,25 @@ with tab_crawl:
 
                     if result and result.get('crawl_status') == 'success':
                         st.success(f"✅ 成功: {url}")
-
                         col1, col2 = st.columns(2)
                         with col1:
                             title = result.get('title', '')
                             st.metric("📄 タイトル", (title[:30] + "...") if len(title) > 30 else title)
                         with col2:
                             st.metric("📊 文字数", f"{result.get('word_count', 0)}語")
-
                         st.session_state.crawl_results.append(result)
                     else:
                         st.error(f"❌ 失敗: {url}")
-                    
+
                     url_count += 1
-                    msg = f"🔗 {url_count}/{urls_count}件のURLを処理中"
-                    progress_bar.progress((url_count)/urls_count,text=msg)
+                    progress_bar.progress(url_count / urls_count,
+                                          text=f"🔗 {url_count}/{urls_count}件のURLを処理中")
 
     if st.session_state.crawl_results:
         st.info(f"{len(st.session_state.crawl_results)}件のクロール結果を登録できます。")
 
         if st.button("💾 全てインデックスに登録"):
             total = len(st.session_state.crawl_results)
-
             progress_text = st.empty()
             progress_bar = st.progress(0)
 
