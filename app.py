@@ -10,6 +10,7 @@ from ranking import get_engine, rebuild_index
 from crawler import crawl_url
 import time
 from gpt_client import summarize_text
+from chat import get_ai_response
 
 # アプリ起動時に DB を初期化する（テーブルが未作成なら作る）
 init_db()
@@ -41,8 +42,20 @@ with st.sidebar:
     st.header("DB の状態")
     st.metric("登録ページ数", f"{len(pages)} 件")
     if st.button("🔄 インデックスを更新"):
-        st.cache_resource.clear()
-        st.rerun()
+         with st.spinner("インデックスを再構築中..."):
+            # 1. 最新の全ページを取得してインデックスを再作成
+            new_pages = get_all_pages()
+            rebuild_index(new_pages)
+            
+            # 2. Streamlitのキャッシュをクリアして最新状態を反映させる
+            st.cache_resource.clear()
+            
+            # 3. 完了メッセージを表示
+            st.success("✅ インデックスの更新が完了しました！")
+        
+            # 4. 画面をリロードして最新の engine を取得し直す
+            time.sleep(1)
+            st.rerun()
 
 # ── タブ ──────────────────────────────────────────────────────
 tab_search, tab_chat, tab_crawl, tab_list = st.tabs(
@@ -100,7 +113,7 @@ with tab_search:
 
                     st.markdown(f"🔗 [{page['url']}]({page['url']})")
 
-                    if st.button(f"このページを要約する", key=f"{page['id']}"):
+                    if st.button(f"このページを要約する", key=f"search_{page['id']}"):
                         with st.spinner("要約中..."):
                             text = f"{page.get('title', '')}\n\n{page.get('full_text', '')}"
                             summary = summarize_text(text)
@@ -113,8 +126,46 @@ with tab_search:
 
 # ── チャットタブ ─────────────────────────────────────────────
 with tab_chat:
-    st.subheader("チャット")
-    st.caption("・・・工事中・・・")
+    st.subheader("💭 AI アシスタント")
+    
+    # 1. 【最優先】まず「messages」がセッション内にあるか確認し、なければ作る
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # 2. 履歴クリアボタン
+    if st.button("🗑️ 履歴をクリア", key="clear_chat"):
+        st.session_state.messages = []
+        st.rerun()
+
+    # 3. 履歴の表示（ここで st.session_state.messages を使う）
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 4. 入力欄（これが自動で最下部に固定される）
+    if prompt := st.chat_input("質問を入力してください（例: 製造業のDX事例は？）"):
+        # ユーザー入力を表示＆保存
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # AIの回答生成ロジック
+        with st.chat_message("assistant"):
+            with st.spinner("ナレッジベースを検索中..."):
+                from chat import get_ai_response # chat.pyからインポート
+                answer, refs = get_ai_response(prompt, engine)
+                
+                full_response = answer
+                if refs:
+                    full_response += "\n\n---\n**📚 参照元:**\n"
+                    for ref in refs:
+                        full_response += f"- [{ref['title']}]({ref['url']})\n"
+                
+                st.markdown(full_response)
+        
+        # 回答を履歴に保存して再描画
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
 
 # ── クローラータブ ─────────────────────────────────────────────
 if "crawl_results" not in st.session_state:
@@ -205,7 +256,7 @@ with tab_list:
                 with col2: st.caption(f"作成者：{page.get('author', '不明') or '不明'}")
                 with col3: st.caption(f"カテゴリ：{page.get('category', '未分類') or '未分類'}")
 
-                if st.button(f"このページを要約する", key=f"{page['id']}"):
+                if st.button(f"このページを要約する", key=f"list_{page['id']}"):
                     with st.spinner("要約中..."):
                         text = f"{page.get('title', '')}\n\n{page.get('full_text', '')}"
                         summary = summarize_text(text)
