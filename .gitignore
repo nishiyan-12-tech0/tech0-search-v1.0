@@ -1,0 +1,15 @@
+#セキュリティ関連
+.env
+.streamlit
+.streamlit/secrets.toml
+
+# ビルド生成物
+__pycache__/
+*.pyc
+__pycache__/ranking.cpython-311.pyc
+
+#デプロイ不要
+generate_dummy_data.py
+seed_data_v2.py
+seed_data.ipynb
+search.db
