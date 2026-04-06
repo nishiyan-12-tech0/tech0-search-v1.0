@@ -115,12 +115,20 @@ with tab_search:
             date_filter=date_filter,
             sort_order=sort_order,
         )
+        st.session_state.search_results = results  # 結果を保存
+        st.session_state.search_info = f"**📊 検索結果：{len(results)} 件**（{sort_label} / {date_label}）"
         log_search(query, len(results))
+    elif search_btn and not query:
+        st.warning("キーワードを入力してください")
 
-        st.markdown(f"**📊 検索結果：{len(results)} 件**（{sort_label} / {date_label}）")
-        st.divider()
+# --- 結果表示部分（ここを独立させる） ---
+if "search_results" in st.session_state:
+    # 状態から結果を取り出す
+    results = st.session_state.search_results
+    st.markdown(st.session_state.search_info)        
+    st.divider()
 
-        if results:
+    if results:
             for i, page in enumerate(results, 1):
                 with st.container():
                     col_rank, col_title, col_score = st.columns([0.5, 4, 1])
@@ -159,10 +167,10 @@ with tab_search:
                         st.write(summary)
 
                     st.divider()
-        else:
+    else:
             st.info("該当するページが見つかりませんでした")
 
-    elif search_btn and not query:
+elif search_btn and not query:
         st.warning("キーワードを入力してください")
 
 # ── チャットタブ ─────────────────────────────────────────────
