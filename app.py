@@ -107,71 +107,83 @@ with tab_search:
     date_filter = date_map[date_label]
     sort_order  = sort_map[sort_label]
 
-    # ── 検索実行（検索ボタンを押したとき） ────────────────────
+    # --- 検索実行部分 ---------------------------------------------------------
     if search_btn and query:
         results = engine.search(
-            query,
-            top_n=top_n,
-            date_filter=date_filter,
-            sort_order=sort_order,
+        query,
+        top_n=top_n,
+        date_filter=date_filter,
+        sort_order=sort_order,
+    )
+        st.session_state.search_results = results
+        st.session_state.search_info = (
+            f"**📊 検索結果：{len(results)} 件**（{sort_label} / {date_label}）"
         )
-        st.session_state.search_results = results  # 結果を保存
-        st.session_state.search_info = f"**📊 検索結果：{len(results)} 件**（{sort_label} / {date_label}）"
         log_search(query, len(results))
+
     elif search_btn and not query:
         st.warning("キーワードを入力してください")
 
-# --- 結果表示部分（ここを独立させる） ---
-if "search_results" in st.session_state:
-    # 状態から結果を取り出す
-    results = st.session_state.search_results
-    st.markdown(st.session_state.search_info)        
-    st.divider()
 
-    if results:
+# --- 結果表示部分（検索実行とは独立） -------------------------------------
+    if "search_results" in st.session_state:
+
+        results = st.session_state.search_results
+        st.markdown(st.session_state.search_info)
+        st.divider()
+
+        if results:
             for i, page in enumerate(results, 1):
                 with st.container():
                     col_rank, col_title, col_score = st.columns([0.5, 4, 1])
-                    with col_rank:
-                        medal = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else str(i)
-                        st.markdown(f"### {medal}")
-                    with col_title:
-                        st.markdown(f"### {page['title']}")
-                    with col_score:
-                        st.metric("スコア", f"{page['relevance_score']}",
-                                  delta=f"基準: {page['base_score']}")
+                with col_rank:
+                    medal = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else str(i)
+                    st.markdown(f"### {medal}")
+                with col_title:
+                    st.markdown(f"### {page['title']}")
+                with col_score:
+                    st.metric(
+                        "スコア",
+                        f"{page['relevance_score']}",
+                        delta=f"基準: {page['base_score']}",
+                    )
 
-                    desc = page.get("description", "")
-                    if desc:
-                        st.markdown(f"*{desc[:200]}{'...' if len(desc) > 200 else ''}*")
+                desc = page.get("description", "")
+                if desc:
+                    st.markdown(f"*{desc[:200]}{'...' if len(desc) > 200 else ''}*")
 
-                    kw = page.get("keywords", "") or ""
-                    if kw:
-                        kw_list = [k.strip() for k in kw.split(",") if k.strip()][:5]
-                        tags = " ".join([f"`{k}`" for k in kw_list])
-                        st.markdown(f"🏷️ {tags}")
+                kw = page.get("keywords", "") or ""
+                if kw:
+                    kw_list = [k.strip() for k in kw.split(",") if k.strip()][:5]
+                    tags = " ".join([f"`{k}`" for k in kw_list])
+                    st.markdown(f"🏷️ {tags}")
 
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1: st.caption(f"👤 {page.get('author', '不明') or '不明'}")
-                    with col2: st.caption(f"📊 {page.get('word_count', 0)} 語")
-                    with col3: st.caption(f"📁 {page.get('category', '未分類') or '未分類'}")
-                    with col4: st.caption(f"📅 {(page.get('crawled_at', '') or '')[:10]}")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.caption(f"👤 {page.get('author', '不明') or '不明'}")
+                with col2:
+                    st.caption(f"📊 {page.get('word_count', 0)} 語")
+                with col3:
+                    st.caption(f"📁 {page.get('category', '未分類') or '未分類'}")
+                with col4:
+                    st.caption(f"📅 {(page.get('crawled_at', '') or '')[:10]}")
 
-                    st.markdown(f"🔗 [{page['url']}]({page['url']})")
+                st.markdown(f"🔗 [{page['url']}]({page['url']})")
 
-                    if st.button(f"このページを要約する", key=f"search_{page['id']}"):
-                        with st.spinner("要約中..."):
-                            text = f"{page.get('title', '')}\n\n{page.get('full_text', '')}"
-                            summary = summarize_text(text)
-                        st.success("要約結果")
-                        st.write(summary)
+                if st.button(f"このページを要約する", key=f"search_{page['id']}"):
+                    with st.spinner("要約中..."):
+                        text = f"{page.get('title', '')}\n\n{page.get('full_text', '')}"
+                        summary = summarize_text(text)
+                    st.success("要約結果")
+                    st.write(summary)
 
-                    st.divider()
+                st.divider()
+
     else:
-            st.info("該当するページが見つかりませんでした")
+        st.info("該当するページが見つかりませんでした")
 
-elif search_btn and not query:
-        st.warning("キーワードを入力してください")
+
+
 
 # ── チャットタブ ─────────────────────────────────────────────
 with tab_chat:
